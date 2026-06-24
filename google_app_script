@@ -1,0 +1,151 @@
+// ============================================================
+//  SOS Alert — Google Apps Script
+//  ESP32 → Apps Script → FCM v1 API → Android
+// ============================================================
+
+// ── CONFIGURATION — fill these in ───────────────────────────
+
+// From your downloaded Service Account JSON file:
+const SERVICE_ACCOUNT_EMAIL = "firebase-adminsdk-fbsvc@sos-alert-f9f0d.iam.gserviceaccount.com";
+const PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDJMQ97B+u3SLJ+\nXN8kkVMbPMsKwHriGpVk62/ylcOvABMN5FLJT0SAUKMhqcxzVyxlclToxcvzCpye\nsVl9H33imXYPDI5u9641oR4+b/QsR093F8gKaX23t2ZtQut9uKX+R06Dn6icK2g1\npdg+y8z9zfGyNTQMDlORfXKuhiqLueJj8M3WnzI5y2Dz00kw/bVvSiRzCgEQ0yBv\n0XM9gJMXaZLQXeXKWpS4gcN0SZ36VMS76f8lbfQW0m7C8DddkVYKheDSIOyL5baW\nmwE3W0Dhfnf9kh1th7oe8WQVl0FyZtYgoqY8T/5uORFd8ZbnTj6ST5Pw7cRikgjr\nWl3fSGljAgMBAAECggEABcpFxEgsX/t765TeDsFB74kJ3OOnBbMD9Q7gWDTRy2UI\np1mYilbS+JBmVkjHntNcIaIVnUqOZCgiuflBQ1xKW3pujxNQ70YG7pMvxomi5Abv\nW6GRevJud4DHNijHxzf7sWKfxbws3MW6ofFsB+HTCSp9CyBqpyT4aCAz0myZDkLv\np1RPgN/SToDdz4738ZeH73IaL66AcAWc1PB1ty6KuXGXJFA1/kyLQaYfSXc6FiVq\nApI9JTqh1NjcB3cCd4HHunHMv/yNWHGizNpUmX1b7pAOhEXWjKCSKqXTmdOqSv+p\nkn7d+rAGYvxj9s80EnYMjnqHuR2m5X8bpEIGDiCtQQKBgQD1RADqUuaR0Cw41FLV\nx9u+Ws7CB12noZbA6cy7rFeraPd7t/tG9J8f5xr81dY4VC1cvOQoVVPiTeuWPPnY\nq3sskJ5Y++ECO2TDpCWvHF9FkYKePMc5qwZ0kk5XELemIoBvEQk9CIJly4bYNhax\nW0FB6tMe1vA/tLIt4Rv/lunzowKBgQDR/z6fA4Vgq6TzUh5Dee0G3lkKXHyY1Kjv\npeAW90LzYh9uxrWeSmaJRf8L18EHBZlbe9/ARcTgkmvIZTEi+Ods6r8R/4ZaztD/\nGLBwAQLfs7g4Hz1Okf4MhteZTVgeVkWUjLkl4vLDNmaFHC/MVVJUMjshZAVOuFM1\nDA21FqkPQQKBgCBeNiS2hhlOONfTJY9zDcwEXe77W9/IkoWpFUzbRMKpWqfoMvA9\nTla+gDBH5DqQ2V+4yf+Mq0JdeC7eozZ2Aw5xk4Q40Ywi3Hx5SEPg4a3jszJA4SX6\nLSLrQA17dlElkn+V5vs4CUV347bbBImpemZBoFUclp5BsZYedDx55SwzAoGAX3/g\njpgfU/M7NJynvq/4JyN/AsNEtowft7yLyGXyQJTjDpG3jqDvOIZoko4v7m2RbJVN\nEDeqbSapdZzvV6QyOsoW0qyOAUYErb4gnw8Wq30jzgIG83BZRIEeE02lQUaipgfJ\nO32WQUjAHtDOu/IhWsDtOyYtc7tHu9wbb7s6bwECgYEAxhvmJy9C3+nleCKxKZcA\nGtw0UC5zGlskRhfKU9dDYCqULmpHDyJXTqYamDVd3m/8UcJRyUmmSoT7GQMhq4oi\nCmTrv/S9ENgz4E7MTIon2GM9tIIYEEjljXZhg5TCXvMtN5jzIFLP8/AArHVGFRRM\n604iRQQb6PJxTCR88KzOW90=\n-----END PRIVATE KEY-----\n"
+;
+
+// From Firebase Console → Project Settings → General → Project ID:
+const PROJECT_ID = "sos-alert-f9f0d";
+
+// Your Android device FCM token (from the app screen or Logcat):
+const DEVICE_TOKEN ="dnS7PPT_R4OsNBt4Igd76R:APA91bHfpYbX_fVZqNgFtOgh81x4luBIXwxFXfmuB8xHYHYrwgPdngM4YDRSmcW2tnJkVdgEz34l85qcmMo3rxcxoUovx8suuxzKi3HLl7JMyEC1APepO_Q";
+
+// ── FCM endpoint ─────────────────────────────────────────────
+const FCM_URL = `https://fcm.googleapis.com/v1/projects/${PROJECT_ID}/messages:send`;
+
+// ============================================================
+//  Entry point — called by ESP32 POST request
+// ============================================================
+function doPost(e) {
+  try {
+    // Parse JSON body sent by ESP32
+    const body = JSON.parse(e.postData.contents);
+    const fromId = body.fromId !== undefined ? body.fromId : "?";
+
+    // Get a fresh OAuth2 access token
+    const accessToken = getAccessToken();
+
+    // Send FCM notification
+    const result = sendFCMNotification(accessToken, fromId);
+
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: "ok", fcm: result }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ============================================================
+//  Generate OAuth2 access token from Service Account
+// ============================================================
+function getAccessToken() {
+  const now = Math.floor(Date.now() / 1000);
+
+  // Build JWT header + claim
+  const header = Utilities.base64EncodeWebSafe(
+    JSON.stringify({ alg: "RS256", typ: "JWT" })
+  );
+
+  const claim = Utilities.base64EncodeWebSafe(
+    JSON.stringify({
+      iss: SERVICE_ACCOUNT_EMAIL,
+      scope: "https://www.googleapis.com/auth/firebase.messaging",
+      aud: "https://oauth2.googleapis.com/token",
+      iat: now,
+      exp: now + 3600  // token valid for 1 hour
+    })
+  );
+
+  // Sign JWT with private key
+  const signature = Utilities.base64EncodeWebSafe(
+    Utilities.computeRsaSha256Signature(
+      `${header}.${claim}`,
+      PRIVATE_KEY
+    )
+  );
+
+  const jwt = `${header}.${claim}.${signature}`;
+
+  // Exchange JWT for access token
+  const response = UrlFetchApp.fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    contentType: "application/x-www-form-urlencoded",
+    payload: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`
+  });
+
+  const tokenData = JSON.parse(response.getContentText());
+
+  if (!tokenData.access_token) {
+    throw new Error("Failed to get access token: " + response.getContentText());
+  }
+
+  return tokenData.access_token;
+}
+
+// ============================================================
+//  Send FCM v1 notification
+// ============================================================
+function sendFCMNotification(accessToken, fromId) {
+  const payload = {
+    message: {
+      token: DEVICE_TOKEN,
+      notification: {
+        title: "!! SOS ALERT !!",
+        body: "SOS from node " + fromId
+      },
+      data: {
+        fromId: String(fromId)
+      },
+      android: {
+        priority: "high",
+        notification: {
+          sound: "default",
+          channel_id: "SOS_CHANNEL",
+          visibility: "PUBLIC"
+        }
+      }
+    }
+  };
+
+  const response = UrlFetchApp.fetch(FCM_URL, {
+    method: "POST",
+    contentType: "application/json",
+    headers: {
+      Authorization: "Bearer " + accessToken
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  const code = response.getResponseCode();
+  const text = response.getContentText();
+
+  Logger.log("FCM response code: " + code);
+  Logger.log("FCM response body: " + text);
+
+  if (code !== 200) {
+    throw new Error("FCM error " + code + ": " + text);
+  }
+
+  return JSON.parse(text);
+}
+
+// ============================================================
+//  Test function — run this manually inside Apps Script
+//  to verify everything works before connecting ESP32
+// ============================================================
+function testSendSOS() {
+  const accessToken = getAccessToken();
+  const result = sendFCMNotification(accessToken, 2);
+  Logger.log("Test result: " + JSON.stringify(result));
+}
